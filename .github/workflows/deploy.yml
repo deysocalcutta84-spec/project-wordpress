@@ -1,0 +1,59 @@
+name: Deploy WordPress to AWS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: Log in to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build, tag, and push image to Amazon ECR
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: my-wordpress-app
+        IMAGE_TAG: latest
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+    - name: Deploy to EC2 via SSH
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ec2-user
+        key: ${{ secrets.EC2_SSH_KEY }}
+        script: |
+          # Log into ECR on the EC2 instance
+          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
+          
+          # Clean up old containers if they exist
+          docker stop wordpress-app || true
+          docker rm wordpress-app || true
+          
+          # Pull the latest image we just pushed from GitHub Actions
+          docker pull ${{ steps.login-ecr.outputs.registry }}/my-wordpress-app:latest
+          
+          # Run the container and link it to your RDS Database using GitHub Secrets
+          docker run -d --name wordpress-app \
+            -p 8081:80 \
+            -e WORDPRESS_DB_HOST=${{ secrets.RDS_HOST }} \
+            -e WORDPRESS_DB_USER=admin \
+            -e WORDPRESS_DB_PASSWORD=SuperSecretPassword123 \
+            -e WORDPRESS_DB_NAME=wordpressdb \
+            ${{ steps.login-ecr.outputs.registry }}/my-wordpress-app:latest
