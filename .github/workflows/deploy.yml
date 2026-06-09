@@ -42,7 +42,7 @@ jobs:
           # Log into ECR on the EC2 instance
           aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
           
-          # Clean up old containers if they exist
+          # Clean up old containers if they exists
           docker stop wordpress-app || true
           docker rm wordpress-app || true
           
