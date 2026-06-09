@@ -41,5 +41,5 @@ jobs:
         port: 22
         # This will simply print the server name and exit
         script: |
-          echo "Connection successful!"
+          echo "Connection successfull!"
           uname -a
