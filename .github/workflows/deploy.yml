@@ -10,10 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout Code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v2
+      uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -21,7 +21,7 @@ jobs:
 
     - name: Log in to Amazon ECR
       id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v1
+      uses: aws-actions/amazon-ecr-login@v2
 
     - name: Build, tag, and push image to Amazon ECR
       env:
@@ -33,23 +33,27 @@ jobs:
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
     - name: Deploy to EC2 via SSH
-      uses: appleboy/ssh-action@master
+      uses: appleboy/ssh-action@v1.0.3
       with:
         host: ${{ secrets.EC2_HOST }}
         username: ec2-user
         key: ${{ secrets.EC2_SSH_KEY }}
+        port: 22
+        envs: AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY
         script: |
+          export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
+          export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
+          export AWS_DEFAULT_REGION=us-east-1
+
           # Log into ECR on the EC2 instance
           aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
           
-          # Clean up old containers if they exists
+          # Clean up old containers
           docker stop wordpress-app || true
           docker rm wordpress-app || true
           
-          # Pull the latest image we just pushed from GitHub Actions
+          # Pull the latest image and run the app
           docker pull ${{ steps.login-ecr.outputs.registry }}/my-wordpress-app:latest
-          
-          # Run the container and link it to your RDS Database using GitHub Secrets
           docker run -d --name wordpress-app \
             -p 8081:80 \
             -e WORDPRESS_DB_HOST=${{ secrets.RDS_HOST }} \
